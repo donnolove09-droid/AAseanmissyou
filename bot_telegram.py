@@ -184,16 +184,17 @@ def create_skin_grid(skin_names: list, name_to_info: dict, max_skins: int = 200)
 
     items = []
     for name in sorted_names[:max_skins]:
-        info = get_skin_info(name, name_to_info)
-        if info and info.get("img"):
-            items.append((name, info))
+        info = get_skin_info(name, name_to_info) or {}
+        items.append((name, info))
 
     if not items:
         return None
 
     def dl(url):
+        if not url:
+            return None
         try:
-            r = requests.get(url, timeout=12, headers={"User-Agent": "Mozilla/5.0"})
+            r = requests.get(url, timeout=10, headers={"User-Agent": "Mozilla/5.0"})
             if r.status_code == 200:
                 return Image.open(BytesIO(r.content)).convert("RGB")
         except Exception:
@@ -202,9 +203,11 @@ def create_skin_grid(skin_names: list, name_to_info: dict, max_skins: int = 200)
 
     from concurrent.futures import ThreadPoolExecutor
     with ThreadPoolExecutor(max_workers=16) as ex:
-        imgs = list(ex.map(lambda x: dl(x[1]["img"]), items))
+        urls = [it[1].get("img") for it in items]
+        imgs = list(ex.map(dl, urls))
 
-    valid = [(name, info, img) for (name, info), img in zip(items, imgs) if img]
+    # Giữ tất cả, skin nào không có ảnh thì dùng None
+    valid = [(name, info, img) for (name, info), img in zip(items, imgs)]
     if not valid:
         return None
 
@@ -269,10 +272,15 @@ def create_skin_grid(skin_names: list, name_to_info: dict, max_skins: int = 200)
         # Card với viền sáng hơn (glassmorphism feel)
         draw.rectangle([x, y, x + thumb, y + thumb + label_h - 2], fill=(20, 40, 85), outline=(90, 160, 255), width=2)
 
-        img.thumbnail((thumb - 4, thumb - 4), Image.LANCZOS)
-        ix = x + (thumb - img.width) // 2
-        iy = y + 2 + (thumb - 4 - img.height) // 2
-        canvas.paste(img, (ix, iy))
+        if img:
+            img.thumbnail((thumb - 4, thumb - 4), Image.LANCZOS)
+            ix = x + (thumb - img.width) // 2
+            iy = y + 2 + (thumb - 4 - img.height) // 2
+            canvas.paste(img, (ix, iy))
+        else:
+            # Placeholder nếu không có ảnh
+            draw.rectangle([x + 4, y + 4, x + thumb - 4, y + thumb - 4], fill=(35, 55, 100))
+            draw.text((x + thumb//2 - 10, y + thumb//2 - 6), "?", fill=(120, 160, 220), font=font)
 
         grade = (info.get("grade") or "").upper()
         if grade:
